@@ -29,6 +29,46 @@ SCRAPER_BUILD_CONTEXT=https://github.com/Raymoun17/stash-scraper-worker.git#v1.0
 
 Leave these variables unset during local development to use the sibling paths.
 
+### Private GitHub build contexts
+
+Use SSH authentication rather than putting a personal access token in `.env`.
+Add the generated public key to a dedicated GitHub machine-user account that
+has read access to the four source repositories. GitHub deploy keys are scoped
+to one repository and cannot be reused, so using deploy keys instead requires
+four distinct keys and SSH host aliases.
+
+On the Ubuntu host:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/stash_build -C stash-build -N ''
+cat ~/.ssh/stash_build.pub
+ssh-keyscan github.com >> ~/.ssh/known_hosts
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/stash_build
+ssh -T git@github.com
+```
+
+Set the build contexts in `.env` to SSH Git URLs:
+
+```dotenv
+DB_BUILD_CONTEXT=git@github.com:Raymoun17/stash-db.git#main
+BFF_BUILD_CONTEXT=git@github.com:Raymoun17/stash-bff.git#main
+UI_BUILD_CONTEXT=git@github.com:Raymoun17/stash-ui.git#main
+SCRAPER_BUILD_CONTEXT=git@github.com:Raymoun17/stash-scraper-worker.git#main
+```
+
+Forward the loaded key to BuildKit when rebuilding:
+
+```bash
+docker compose build --pull --ssh default
+docker compose up -d --remove-orphans
+```
+
+The SSH key is used only to fetch the private build contexts and is not copied
+into the resulting images. A shell started later must start an agent and run
+`ssh-add ~/.ssh/stash_build` again; alternatively, configure a persistent user
+SSH agent service.
+
 Open `http://localhost:3000`, or the port selected with `UI_PORT`. Database
 migrations run before the API starts and data persists in a named Docker volume.
 
