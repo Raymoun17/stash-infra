@@ -95,6 +95,7 @@ services:
       target: runtime
       args:
         NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS: ${NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS:-60000}
         BFF_INTERNAL_URL: http://bff:3000
     restart: unless-stopped
     environment:
