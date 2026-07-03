@@ -12,14 +12,24 @@ fail() { printf '\n[stash-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 require_command() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
 
 install_ubuntu_requirements() {
-    local missing=false
-    for command in docker git ssh ssh-keygen ssh-add ssh-agent ssh-keyscan gh; do
-        command -v "$command" >/dev/null 2>&1 || missing=true
-    done
-    if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
-        missing=true
+    local packages=()
+    command -v curl >/dev/null 2>&1 || packages+=(curl)
+    command -v git >/dev/null 2>&1 || packages+=(git)
+    command -v gh >/dev/null 2>&1 || packages+=(gh)
+    command -v ssh >/dev/null 2>&1 || packages+=(openssh-client)
+    command -v ssh-keygen >/dev/null 2>&1 || packages+=(openssh-client)
+    command -v ssh-add >/dev/null 2>&1 || packages+=(openssh-client)
+    command -v ssh-agent >/dev/null 2>&1 || packages+=(openssh-client)
+    command -v ssh-keyscan >/dev/null 2>&1 || packages+=(openssh-client)
+
+    local docker_missing=false
+    command -v docker >/dev/null 2>&1 || docker_missing=true
+    local compose_missing=false
+    if [[ "$docker_missing" == false ]] && ! docker compose version >/dev/null 2>&1; then
+        compose_missing=true
     fi
-    [[ "$missing" == false ]] && return
+
+    [[ ${#packages[@]} -eq 0 && "$docker_missing" == false && "$compose_missing" == false ]] && return
 
     command -v apt-get >/dev/null 2>&1 \
         || fail "Automatic dependency installation supports Ubuntu/Debian apt hosts only."
@@ -27,12 +37,17 @@ install_ubuntu_requirements() {
 
     log "Installing Ubuntu deployment requirements"
     sudo apt-get update
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        ca-certificates curl git gh openssh-client docker.io
+    if [[ ${#packages[@]} -gt 0 ]]; then
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates "${packages[@]}"
+    fi
 
-    if ! docker compose version >/dev/null 2>&1; then
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2 \
-            || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin
+    if [[ "$docker_missing" == true ]]; then
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+    fi
+
+    if [[ "$compose_missing" == true ]] || ! docker compose version >/dev/null 2>&1; then
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin \
+            || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2
     fi
 
     sudo systemctl enable --now docker
