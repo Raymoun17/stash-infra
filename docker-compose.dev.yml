@@ -1,0 +1,50 @@
+services:
+  ui:
+    build:
+      target: development
+    develop:
+      watch:
+        - action: sync
+          path: ../stash-ui
+          target: /app
+          ignore:
+            - node_modules/
+            - .next/
+            - .git/
+        - action: rebuild
+          path: ../stash-ui/package.json
+        - action: rebuild
+          path: ../stash-ui/package-lock.json
+
+  bff:
+    build:
+      target: development
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - action: sync
+          path: ../stash-bff
+          target: /app
+          ignore:
+            - node_modules/
+            - dist/
+            - .git/
+        - action: rebuild
+          path: ../stash-bff/package.json
+        - action: rebuild
+          path: ../stash-bff/package-lock.json
+        - action: rebuild
+          path: ../stash-bff/prisma
+
+  scraper-worker:
+    build:
+      target: development
+    develop:
+      watch:
+        - action: sync
+          path: ../stash-scraper-worker/app
+          target: /app/app
+        - action: rebuild
+          path: ../stash-scraper-worker/requirements.txt
