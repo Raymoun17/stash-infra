@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+GITHUB_OWNER="${GITHUB_OWNER:-Raymoun17}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+SSH_KEY_PATH="${STASH_SSH_KEY_PATH:-$HOME/.ssh/stash_build}"
+KEY_MARKER="${SSH_KEY_PATH}.github-registered"
+REPOSITORIES=(stash-db stash-bff stash-ui stash-scraper-worker)
+
+log() { printf '\n[stash-deploy] %s\n' "$*"; }
+fail() { printf '\n[stash-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
+require_command() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
+
+require_command docker
+require_command git
+require_command ssh
+require_command ssh-keygen
+require_command ssh-add
+require_command ssh-agent
+require_command ssh-keyscan
+require_command gh
+
+docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required."
+docker info >/dev/null 2>&1 || fail "Docker is unavailable. Start Docker or grant this user Docker access."
+gh auth status --hostname github.com >/dev/null 2>&1 || {
+    log "GitHub authentication is required once. Follow the prompts."
+    gh auth login --hostname github.com --git-protocol ssh --web
+}
+
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+touch "$HOME/.ssh/known_hosts"
+chmod 600 "$HOME/.ssh/known_hosts"
+if ! ssh-keygen -F github.com -f "$HOME/.ssh/known_hosts" >/dev/null 2>&1; then
+    log "Adding GitHub to known_hosts"
+    ssh-keyscan -H github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+fi
+
+if [[ ! -f "$SSH_KEY_PATH" ]]; then
+    log "Generating deployment SSH key at $SSH_KEY_PATH"
+    ssh-keygen -t ed25519 -f "$SSH_KEY_PATH" -C "stash-build@$(hostname)" -N ""
+fi
+chmod 600 "$SSH_KEY_PATH"
+chmod 644 "${SSH_KEY_PATH}.pub"
+
+eval "$(ssh-agent -s)" >/dev/null
+trap 'ssh-agent -k >/dev/null 2>&1 || true' EXIT
+ssh-add "$SSH_KEY_PATH" >/dev/null
+
+if [[ ! -f "$KEY_MARKER" ]]; then
+    log "Registering deployment key with GitHub account $GITHUB_OWNER"
+    gh auth refresh --hostname github.com --scopes admin:public_key
+    if gh ssh-key add "${SSH_KEY_PATH}.pub" --title "stash-build-$(hostname)"; then
+        touch "$KEY_MARKER"
+        chmod 600 "$KEY_MARKER"
+    else
+        fail "Could not register the SSH key. If the key already exists on GitHub, run: touch '$KEY_MARKER'"
+    fi
+fi
+
+log "Verifying private repository access"
+for repository in "${REPOSITORIES[@]}"; do
+    git ls-remote "git@github.com:${GITHUB_OWNER}/${repository}.git" HEAD >/dev/null \
+        || fail "Cannot read ${GITHUB_OWNER}/${repository} with $SSH_KEY_PATH"
+done
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [[ -d .git ]]; then
+    log "Updating stash-infra"
+    git pull --ff-only
+fi
+
+export DB_BUILD_CONTEXT="git@github.com:${GITHUB_OWNER}/stash-db.git#${DEPLOY_BRANCH}"
+export BFF_BUILD_CONTEXT="git@github.com:${GITHUB_OWNER}/stash-bff.git#${DEPLOY_BRANCH}"
+export UI_BUILD_CONTEXT="git@github.com:${GITHUB_OWNER}/stash-ui.git#${DEPLOY_BRANCH}"
+export SCRAPER_BUILD_CONTEXT="git@github.com:${GITHUB_OWNER}/stash-scraper-worker.git#${DEPLOY_BRANCH}"
+
+log "Building the latest ${DEPLOY_BRANCH} sources"
+docker compose build --pull --ssh default
+
+log "Applying the deployment"
+docker compose up -d --remove-orphans
+
+log "Deployment status"
+docker compose ps

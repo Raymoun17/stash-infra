@@ -16,6 +16,25 @@ docker compose up -d --build
 docker compose ps
 ```
 
+### One-command Ubuntu deployment
+
+Install Docker Engine with Compose v2 and the GitHub CLI, clone this repository,
+create `.env`, then run:
+
+```bash
+bash deploy.bash
+```
+
+On its first run, the script authenticates the GitHub CLI if necessary,
+generates `~/.ssh/stash_build`, registers its public key with GitHub, verifies
+access to every source repository, updates `stash-infra`, builds the latest
+`main` sources, and restarts the stack. Later deployments use the existing key
+and require only the same command.
+
+The GitHub account used by `gh auth login` must have read access to all four
+source repositories. Optional overrides are `GITHUB_OWNER`, `DEPLOY_BRANCH`,
+and `STASH_SSH_KEY_PATH`.
+
 For standalone deployment with only `stash-infra` cloned, set the four build
 contexts in `.env` to their Git URLs. Docker BuildKit pulls them for free when
 the repositories are public. Pin tags or full commits for stable releases:
