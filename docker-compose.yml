@@ -1,89 +1,91 @@
+name: stash
+
 services:
   db:
-    image: postgres:18-alpine
-    container_name: ${DB_CONTAINER_NAME:-stash-db}
+    build:
+      context: ${DB_BUILD_CONTEXT:-../stash-db}
+    image: stash-db:local
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+      POSTGRES_USER: ${POSTGRES_USER:-stash}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-stash}
-    ports:
-      - "${DB_PORT:-5432}:5432"
     volumes:
-      - ${DB_VOLUME_NAME:-pgdata}:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d stash"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 12
-    networks:
-      - stash-network
+      start_period: 5s
+
+  scraper-worker:
+    build:
+      context: ${SCRAPER_BUILD_CONTEXT:-../stash-scraper-worker}
+      target: runtime
+    restart: unless-stopped
+    environment:
+      SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN:?Set SCRAPER_SERVICE_TOKEN in .env}
+      SCRAPER_MAX_CONCURRENCY: ${SCRAPER_MAX_CONCURRENCY:-2}
+      SCRAPER_LOG_LEVEL: ${SCRAPER_LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   bff:
     build:
-      context: ./stash-bff
+      context: ${BFF_BUILD_CONTEXT:-../stash-bff}
       target: runtime
-    container_name: ${BFF_CONTAINER_NAME:-stash-bff}
     restart: unless-stopped
     command: ["sh", "-c", "npx prisma migrate deploy && npm start"]
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL:-postgresql://admin:admin@${DB_HOST_ALIAS:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-stash}}
-      JWT_SECRET: ${JWT_SECRET:-stash-local-jwt-secret-change-in-production}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-stash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-stash}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       REFRESH_COOKIE_PATH: /api/auth
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
       SCRAPER_MODE: remote
-      SCRAPER_WORKER_URL: ${SCRAPER_WORKER_URL:-http://${SCRAPER_HOST_ALIAS:-scraper-worker}:${SCRAPER_PORT:-8000}}
-      SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN:-stash-local-service-token}
+      SCRAPER_WORKER_URL: http://scraper-worker:8000
+      SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN}
       INTEGRATION_TIMEOUT_MS: ${INTEGRATION_TIMEOUT_MS:-20000}
       INTEGRATION_MAX_HTML_BYTES: ${INTEGRATION_MAX_HTML_BYTES:-10000000}
-    ports:
-      - "${BFF_PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - stash-network
+      scraper-worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   ui:
     build:
-      context: ./stash-ui
+      context: ${UI_BUILD_CONTEXT:-../stash-ui}
       target: runtime
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-        BFF_INTERNAL_URL: ${BFF_INTERNAL_URL:-http://${BFF_HOST_ALIAS:-bff}:${BFF_PORT:-3000}}
-    container_name: ${UI_CONTAINER_NAME:-stash-ui}
+        NEXT_PUBLIC_API_URL: /api
+        BFF_INTERNAL_URL: http://bff:3000
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-      BFF_INTERNAL_URL: ${BFF_INTERNAL_URL:-http://${BFF_HOST_ALIAS:-bff}:${BFF_PORT:-3000}}
+      BFF_INTERNAL_URL: http://bff:3000
     ports:
-      - "${UI_PORT:-3001}:3000"
+      - "${UI_PORT:-3000}:3000"
     depends_on:
-      - bff
-    networks:
-      - stash-network
-
-  scraper-worker:
-    build:
-      context: ./stash-scraper-worker
-      target: runtime
-    container_name: ${SCRAPER_CONTAINER_NAME:-stash-scraper-worker}
-    restart: unless-stopped
-    environment:
-      SCRAPER_HOST: ${SCRAPER_BIND_HOST:-0.0.0.0}
-      SCRAPER_PORT: ${SCRAPER_PORT:-8000}
-      SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN:-stash-local-service-token}
-      SCRAPER_MAX_CONCURRENCY: ${SCRAPER_MAX_CONCURRENCY:-2}
-    ports:
-      - "${SCRAPER_PORT:-8000}:8000"
-    networks:
-      - stash-network
+      bff:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
-  pgdata:
-
-networks:
-  stash-network:
-    name: ${NETWORK_NAME:-stash-network}
+  postgres-data:
