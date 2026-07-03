@@ -18,14 +18,15 @@ docker compose ps
 
 ### One-command Ubuntu deployment
 
-Install Docker Engine with Compose v2 and the GitHub CLI, clone this repository,
-create `.env`, then run:
+On Ubuntu, clone this repository, create `.env`, then run:
 
 ```bash
 bash deploy.bash
 ```
 
-On its first run, the script authenticates the GitHub CLI if necessary,
+The script installs missing requirements through `apt` (`git`, OpenSSH,
+GitHub CLI, Docker Engine, and Compose v2). On its first run, it then
+authenticates the GitHub CLI if necessary,
 generates `~/.ssh/stash_build`, registers its public key with GitHub, verifies
 access to every source repository, updates `stash-infra`, builds the latest
 `main` sources, and restarts the stack. Later deployments use the existing key

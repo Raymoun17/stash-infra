@@ -11,6 +11,36 @@ log() { printf '\n[stash-deploy] %s\n' "$*"; }
 fail() { printf '\n[stash-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 require_command() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
 
+install_ubuntu_requirements() {
+    local missing=false
+    for command in docker git ssh ssh-keygen ssh-add ssh-agent ssh-keyscan gh; do
+        command -v "$command" >/dev/null 2>&1 || missing=true
+    done
+    if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
+        missing=true
+    fi
+    [[ "$missing" == false ]] && return
+
+    command -v apt-get >/dev/null 2>&1 \
+        || fail "Automatic dependency installation supports Ubuntu/Debian apt hosts only."
+    command -v sudo >/dev/null 2>&1 || fail "sudo is required to install deployment dependencies."
+
+    log "Installing Ubuntu deployment requirements"
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        ca-certificates curl git gh openssh-client docker.io
+
+    if ! docker compose version >/dev/null 2>&1; then
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2 \
+            || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin
+    fi
+
+    sudo systemctl enable --now docker
+    sudo usermod -aG docker "$USER"
+}
+
+install_ubuntu_requirements
+
 require_command docker
 require_command git
 require_command ssh
@@ -20,8 +50,15 @@ require_command ssh-agent
 require_command ssh-keyscan
 require_command gh
 
-docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required."
-docker info >/dev/null 2>&1 || fail "Docker is unavailable. Start Docker or grant this user Docker access."
+if docker info >/dev/null 2>&1; then
+    DOCKER=(docker)
+elif sudo docker info >/dev/null 2>&1; then
+    # Newly granted docker-group membership takes effect at the next login.
+    DOCKER=(sudo --preserve-env=SSH_AUTH_SOCK docker)
+else
+    fail "Docker is unavailable. Start the Docker service and rerun this script."
+fi
+"${DOCKER[@]}" compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required."
 gh auth status --hostname github.com >/dev/null 2>&1 || {
     log "GitHub authentication is required once. Follow the prompts."
     gh auth login --hostname github.com --git-protocol ssh --web
@@ -78,10 +115,10 @@ export UI_BUILD_CONTEXT="git@github.com:${GITHUB_OWNER}/stash-ui.git#${DEPLOY_BR
 export SCRAPER_BUILD_CONTEXT="git@github.com:${GITHUB_OWNER}/stash-scraper-worker.git#${DEPLOY_BRANCH}"
 
 log "Building the latest ${DEPLOY_BRANCH} sources"
-docker compose build --pull --ssh default
+"${DOCKER[@]}" compose build --pull --ssh default
 
 log "Applying the deployment"
-docker compose up -d --remove-orphans
+"${DOCKER[@]}" compose up -d --remove-orphans
 
 log "Deployment status"
-docker compose ps
+"${DOCKER[@]}" compose ps
