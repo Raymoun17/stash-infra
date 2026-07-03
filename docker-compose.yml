@@ -1,0 +1,89 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: ${DB_CONTAINER_NAME:-stash-db}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-stash}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - ${DB_VOLUME_NAME:-pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d stash"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - stash-network
+
+  bff:
+    build:
+      context: ./stash-bff
+      target: runtime
+    container_name: ${BFF_CONTAINER_NAME:-stash-bff}
+    restart: unless-stopped
+    command: ["sh", "-c", "npx prisma migrate deploy && npm start"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://admin:admin@${DB_HOST_ALIAS:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-stash}}
+      JWT_SECRET: ${JWT_SECRET:-stash-local-jwt-secret-change-in-production}
+      REFRESH_COOKIE_PATH: /api/auth
+      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      SCRAPER_MODE: remote
+      SCRAPER_WORKER_URL: ${SCRAPER_WORKER_URL:-http://${SCRAPER_HOST_ALIAS:-scraper-worker}:${SCRAPER_PORT:-8000}}
+      SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN:-stash-local-service-token}
+      INTEGRATION_TIMEOUT_MS: ${INTEGRATION_TIMEOUT_MS:-20000}
+      INTEGRATION_MAX_HTML_BYTES: ${INTEGRATION_MAX_HTML_BYTES:-10000000}
+    ports:
+      - "${BFF_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - stash-network
+
+  ui:
+    build:
+      context: ./stash-ui
+      target: runtime
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        BFF_INTERNAL_URL: ${BFF_INTERNAL_URL:-http://${BFF_HOST_ALIAS:-bff}:${BFF_PORT:-3000}}
+    container_name: ${UI_CONTAINER_NAME:-stash-ui}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+      BFF_INTERNAL_URL: ${BFF_INTERNAL_URL:-http://${BFF_HOST_ALIAS:-bff}:${BFF_PORT:-3000}}
+    ports:
+      - "${UI_PORT:-3001}:3000"
+    depends_on:
+      - bff
+    networks:
+      - stash-network
+
+  scraper-worker:
+    build:
+      context: ./stash-scraper-worker
+      target: runtime
+    container_name: ${SCRAPER_CONTAINER_NAME:-stash-scraper-worker}
+    restart: unless-stopped
+    environment:
+      SCRAPER_HOST: ${SCRAPER_BIND_HOST:-0.0.0.0}
+      SCRAPER_PORT: ${SCRAPER_PORT:-8000}
+      SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN:-stash-local-service-token}
+      SCRAPER_MAX_CONCURRENCY: ${SCRAPER_MAX_CONCURRENCY:-2}
+    ports:
+      - "${SCRAPER_PORT:-8000}:8000"
+    networks:
+      - stash-network
+
+volumes:
+  pgdata:
+
+networks:
+  stash-network:
+    name: ${NETWORK_NAME:-stash-network}
