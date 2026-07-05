@@ -26,6 +26,7 @@ services:
     restart: unless-stopped
     environment:
       SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN:?Set SCRAPER_SERVICE_TOKEN in .env}
+      SCRAPER_BACKEND: playwright-stealth
       SCRAPER_MAX_CONCURRENCY: ${SCRAPER_MAX_CONCURRENCY:-2}
       SCRAPER_LOG_LEVEL: ${SCRAPER_LOG_LEVEL:-INFO}
     healthcheck:
@@ -53,6 +54,9 @@ services:
       SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN}
       INTEGRATION_TIMEOUT_MS: ${INTEGRATION_TIMEOUT_MS:-20000}
       INTEGRATION_MAX_HTML_BYTES: ${INTEGRATION_MAX_HTML_BYTES:-10000000}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
       db:
         condition: service_healthy
@@ -81,6 +85,9 @@ services:
       PRICE_REFRESH_INTERVAL_MS: ${PRICE_REFRESH_INTERVAL_MS:-86400000}
       PRICE_REFRESH_BATCH_SIZE: ${PRICE_REFRESH_BATCH_SIZE:-100}
       PRICE_REFRESH_CONCURRENCY: ${PRICE_REFRESH_CONCURRENCY:-2}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
       db:
         condition: service_healthy
