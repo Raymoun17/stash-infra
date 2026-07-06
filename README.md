@@ -2,8 +2,31 @@
 
 Production orchestration for the complete Stash stack. By default, development
 builds use sibling checkouts of `stash-db`, `stash-bff`, `stash-ui`, and
-`stash-scraper-worker`. PostgreSQL, the API, and the worker remain private;
-only the UI is published.
+`stash-scraper-worker`. The UI and BFF bind separate loopback-only host ports
+for an existing host-level reverse proxy. PostgreSQL, the scraper worker, and
+price refresher remain private.
+
+## Public routing
+
+Set `WEB_DOMAIN`, `API_DOMAIN`, and an explicit `CORS_ORIGINS` in `.env`:
+
+```dotenv
+WEB_DOMAIN=stash.your-domain.example
+API_DOMAIN=api.stash.your-domain.example
+CORS_ORIGINS=https://stash.your-domain.example
+```
+
+Configure the existing reverse proxy to terminate HTTPS and route as follows:
+
+```text
+https://WEB_DOMAIN     -> 127.0.0.1:UI_PORT  (default 3000)
+https://API_DOMAIN     -> 127.0.0.1:BFF_PORT (default 3001)
+```
+
+The browser continues to call `/api` on `WEB_DOMAIN`; the UI rewrites those
+requests to `http://bff:3000`. Mobile and external API clients call
+`https://API_DOMAIN` directly. Both bindings use `127.0.0.1`, so the raw
+services are not reachable through the host's external interfaces.
 
 ## Deploy
 
@@ -89,8 +112,9 @@ into the resulting images. A shell started later must start an agent and run
 `ssh-add ~/.ssh/stash_build` again; alternatively, configure a persistent user
 SSH agent service.
 
-Open `http://localhost:3000`, or the port selected with `UI_PORT`. Database
-migrations run before the API starts and data persists in a named Docker volume.
+Open `https://WEB_DOMAIN`; API health is available at
+`https://API_DOMAIN/health`. Database migrations run before the API starts and
+data persists in a named Docker volume.
 
 ## Development watch mode
 
@@ -107,8 +131,12 @@ the changed application automatically. Dependency, Prisma, and Python
 requirements changes trigger an image rebuild. Press `Ctrl+C` to stop the
 stack.
 
-For HTTPS behind a reverse proxy, route traffic to `UI_PORT` and set
-`REFRESH_COOKIE_SECURE=true`.
+The BFF is available to host-local development clients at `BFF_PORT` (3001 by
+default). A physical device cannot reach the loopback binding directly; use
+the configured HTTPS API domain, or intentionally add a LAN development-only
+port override. Do not change the production binding to `0.0.0.0`.
+
+For production HTTPS, set `REFRESH_COOKIE_SECURE=true`.
 
 ```powershell
 docker compose logs -f

@@ -12,6 +12,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-stash}
     volumes:
       - postgres-data:/var/lib/postgresql
+    expose:
+      - "5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -29,6 +31,8 @@ services:
       SCRAPER_BACKEND: playwright-stealth
       SCRAPER_MAX_CONCURRENCY: ${SCRAPER_MAX_CONCURRENCY:-2}
       SCRAPER_LOG_LEVEL: ${SCRAPER_LOG_LEVEL:-INFO}
+    expose:
+      - "8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s
@@ -45,6 +49,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://localhost}
       DATABASE_URL: postgresql://${POSTGRES_USER:-stash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-stash}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       REFRESH_COOKIE_PATH: /api/auth
@@ -55,6 +60,10 @@ services:
       INTEGRATION_TIMEOUT_MS: ${INTEGRATION_TIMEOUT_MS:-20000}
       INTEGRATION_MAX_HTML_BYTES: ${INTEGRATION_MAX_HTML_BYTES:-10000000}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    expose:
+      - "3000"
+    ports:
+      - "127.0.0.1:${BFF_PORT:-3001}:3000"
     volumes:
       - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
@@ -101,14 +110,16 @@ services:
       context: ${UI_BUILD_CONTEXT:-../stash-ui}
       target: runtime
       args:
-        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
         NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS: ${NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS:-60000}
         BFF_INTERNAL_URL: http://bff:3000
     restart: unless-stopped
     environment:
-      BFF_INTERNAL_URL: http://bff:3000
+      BFF_INTERNAL_URL: ${BFF_INTERNAL_URL:-http://bff:3000}
+    expose:
+      - "3000"
     ports:
-      - "${UI_PORT:-3000}:3000"
+      - "127.0.0.1:${UI_PORT:-3000}:3000"
     depends_on:
       bff:
         condition: service_healthy
