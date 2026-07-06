@@ -55,8 +55,6 @@ services:
       INTEGRATION_TIMEOUT_MS: ${INTEGRATION_TIMEOUT_MS:-20000}
       INTEGRATION_MAX_HTML_BYTES: ${INTEGRATION_MAX_HTML_BYTES:-10000000}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-    volumes:
-      - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
       db:
         condition: service_healthy
@@ -86,8 +84,6 @@ services:
       PRICE_REFRESH_BATCH_SIZE: ${PRICE_REFRESH_BATCH_SIZE:-100}
       PRICE_REFRESH_CONCURRENCY: ${PRICE_REFRESH_CONCURRENCY:-2}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-    volumes:
-      - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
       db:
         condition: service_healthy
