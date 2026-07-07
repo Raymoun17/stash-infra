@@ -6,10 +6,16 @@ DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 SSH_KEY_PATH="${STASH_SSH_KEY_PATH:-$HOME/.ssh/stash_build}"
 KEY_MARKER="${SSH_KEY_PATH}.github-registered"
 REPOSITORIES=(stash-db stash-bff stash-ui stash-scraper-worker)
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '\n[stash-deploy] %s\n' "$*"; }
 fail() { printf '\n[stash-deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 require_command() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
+
+[[ -f "$SCRIPT_DIR/.env" ]] || fail "Missing $SCRIPT_DIR/.env. Copy .env.example to .env and replace all change-me values."
+if grep -q 'change-me' "$SCRIPT_DIR/.env"; then
+    fail ".env still contains change-me placeholder secrets."
+fi
 
 install_ubuntu_requirements() {
     local packages=()
@@ -116,7 +122,6 @@ for repository in "${REPOSITORIES[@]}"; do
         || fail "Cannot read ${GITHUB_OWNER}/${repository} with $SSH_KEY_PATH"
 done
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [[ -d .git ]]; then
