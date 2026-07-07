@@ -23,12 +23,14 @@ services:
     build:
       context: ${SCRAPER_BUILD_CONTEXT:-../stash-scraper-worker}
       target: runtime
+    image: stash-scraper-worker-runtime:local
     restart: unless-stopped
     environment:
       SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN:?Set SCRAPER_SERVICE_TOKEN in .env}
       SCRAPER_BACKEND: playwright-stealth
       SCRAPER_MAX_CONCURRENCY: ${SCRAPER_MAX_CONCURRENCY:-2}
       SCRAPER_LOG_LEVEL: ${SCRAPER_LOG_LEVEL:-INFO}
+      SCRAPER_PROXY_URL: ${SCRAPER_PROXY_URL:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s
@@ -40,6 +42,7 @@ services:
     build:
       context: ${BFF_BUILD_CONTEXT:-../stash-bff}
       target: runtime
+    image: stash-bff-runtime:local
     restart: unless-stopped
     command: ["sh", "-c", "npx prisma migrate deploy && npm start"]
     environment:
@@ -47,14 +50,22 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-stash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-stash}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
-      REFRESH_COOKIE_PATH: /api/auth
+      ACCESS_TOKEN_EXPIRES_IN: ${ACCESS_TOKEN_EXPIRES_IN:-15m}
+      REFRESH_TOKEN_EXPIRES_DAYS: ${REFRESH_TOKEN_EXPIRES_DAYS:-30}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-stash_refresh}
+      REFRESH_COOKIE_PATH: /auth
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       SCRAPER_MODE: remote
       SCRAPER_WORKER_URL: http://scraper-worker:8000
       SCRAPER_SERVICE_TOKEN: ${SCRAPER_SERVICE_TOKEN}
       INTEGRATION_TIMEOUT_MS: ${INTEGRATION_TIMEOUT_MS:-20000}
       INTEGRATION_MAX_HTML_BYTES: ${INTEGRATION_MAX_HTML_BYTES:-10000000}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      AI_EXTRACTION_PROMPT_PATH: ${AI_EXTRACTION_PROMPT_PATH:-prompts/product-extraction.md}
+    ports:
+      - "${BFF_BIND_ADDRESS:-0.0.0.0}:${BFF_PORT:-3001}:3000"
     volumes:
       - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
@@ -73,6 +84,7 @@ services:
     build:
       context: ${BFF_BUILD_CONTEXT:-../stash-bff}
       target: runtime
+    image: stash-price-refresher-runtime:local
     restart: unless-stopped
     command: ["npm", "run", "start:price-refresher"]
     environment:
@@ -86,6 +98,8 @@ services:
       PRICE_REFRESH_BATCH_SIZE: ${PRICE_REFRESH_BATCH_SIZE:-100}
       PRICE_REFRESH_CONCURRENCY: ${PRICE_REFRESH_CONCURRENCY:-2}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      AI_EXTRACTION_PROMPT_PATH: ${AI_EXTRACTION_PROMPT_PATH:-prompts/product-extraction.md}
     volumes:
       - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
@@ -101,14 +115,17 @@ services:
       context: ${UI_BUILD_CONTEXT:-../stash-ui}
       target: runtime
       args:
-        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_API_PORT: ${BFF_PORT:-3001}
         NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS: ${NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS:-60000}
-        BFF_INTERNAL_URL: http://bff:3000
+    image: stash-ui-runtime:local
     restart: unless-stopped
     environment:
-      BFF_INTERNAL_URL: http://bff:3000
+      ALLOWED_DEV_ORIGINS: ${ALLOWED_DEV_ORIGINS:-}
     ports:
-      - "${UI_PORT:-3000}:3000"
+      # 0.0.0.0 makes the UI reachable from other devices on the local LAN.
+      # Production can bind only to a reverse proxy with UI_BIND_ADDRESS=127.0.0.1.
+      - "${UI_BIND_ADDRESS:-0.0.0.0}:${UI_PORT:-3000}:3000"
     depends_on:
       bff:
         condition: service_healthy
