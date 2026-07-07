@@ -1,5 +1,6 @@
 services:
   ui:
+    image: stash-ui-development:local
     build:
       target: development
     develop:
@@ -17,6 +18,7 @@ services:
           path: ../stash-ui/package-lock.json
 
   bff:
+    image: stash-bff-development:local
     build:
       target: development
     command: ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
@@ -39,6 +41,7 @@ services:
           path: ../stash-bff/prisma
 
   scraper-worker:
+    image: stash-scraper-worker-development:local
     build:
       target: development
     develop:
