@@ -66,8 +66,6 @@ services:
       AI_EXTRACTION_PROMPT_PATH: ${AI_EXTRACTION_PROMPT_PATH:-prompts/product-extraction.md}
     ports:
       - "${BFF_BIND_ADDRESS:-0.0.0.0}:${BFF_PORT:-3001}:3000"
-    volumes:
-      - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
       db:
         condition: service_healthy
@@ -100,8 +98,6 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
       AI_EXTRACTION_PROMPT_PATH: ${AI_EXTRACTION_PROMPT_PATH:-prompts/product-extraction.md}
-    volumes:
-      - ../stash-bff/prompts:/app/prompts:ro
     depends_on:
       db:
         condition: service_healthy
