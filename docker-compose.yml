@@ -53,7 +53,7 @@ services:
       ACCESS_TOKEN_EXPIRES_IN: ${ACCESS_TOKEN_EXPIRES_IN:-15m}
       REFRESH_TOKEN_EXPIRES_DAYS: ${REFRESH_TOKEN_EXPIRES_DAYS:-30}
       REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-stash_refresh}
-      REFRESH_COOKIE_PATH: /auth
+      REFRESH_COOKIE_PATH: /api/auth
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       SCRAPER_MODE: remote
@@ -111,8 +111,8 @@ services:
       context: ${UI_BUILD_CONTEXT:-../stash-ui}
       target: runtime
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-        NEXT_PUBLIC_API_PORT: ${BFF_PORT:-3001}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+        BFF_INTERNAL_URL: ${BFF_INTERNAL_URL:-http://bff:3000}
         NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS: ${NEXT_PUBLIC_NOTIFICATION_POLL_INTERVAL_MS:-60000}
     image: stash-ui-runtime:local
     restart: unless-stopped

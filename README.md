@@ -394,7 +394,7 @@ migrations, unavailable external APIs, or an image built from stale source.
 
 ### The UI starts but API requests return 404
 
-Confirm `NEXT_PUBLIC_API_URL` is `/api` at build time and
+Confirm `NEXT_PUBLIC_API_BASE_URL` is `/api` at build time and
 `BFF_INTERNAL_URL=http://bff:3000` is available to the UI container. Then check:
 
 ```bash
